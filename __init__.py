@@ -1,0 +1,14 @@
+"""
+etl_parity: validate that a migrated ETL produces the same tables as the existing one.
+
+    from etl_parity import run_parity
+    run = run_parity("/Workspace/Shared/etl_parity/configs/tables.yaml", env="databricks")
+    display(run.summary)
+"""
+from .delta_yaml import build_delta_yaml
+from .keys import KeySettings, discover_keys, to_yaml
+from .table_source import build_tables
+from .runner import ParityReport, ParityRun, main, run_parity, send_report
+
+__version__ = "3.13.0"
+__all__ = ["run_parity", "send_report", "build_delta_yaml", "build_tables", "ParityReport", "main", "ParityRun", "discover_keys", "to_yaml", "KeySettings", "__version__"]

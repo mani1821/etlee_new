@@ -1,0 +1,63 @@
+# =====================================================================================
+# ICD / DPI parity validation: the tables come from two queries, NOT from a tables: list.
+#
+#   full  = run_parity(YAML, env="databricks", load_type="full",        send_email=False)
+#   delta = run_parity(YAML, env="databricks", load_type="incremental", send_email=False)
+#   send_report([full, delta], config=YAML)
+# =====================================================================================
+
+default_env: databricks
+
+environments:
+  databricks:                         # {table} = table name from the queries, lower case
+    source: {type: table, name: "<catalog>.<legacy_schema>.{table}"}
+    target: {type: table, name: "<catalog>.<new_schema>.{table}"}
+
+settings:
+  ts_truncate: second                 # ignore millisecond / microsecond format differences
+  sample_threshold_rows: 500000
+  sample_pct: 10
+  max_sample_rows: 100000
+  count_tolerance_pct: 0.0
+  row_mismatch_tolerance_pct: 0.0
+  delta_count_tolerance_pct: 0.0
+  delta_key_tolerance_pct: 0.0
+  parallel_tables: 4
+  results_table: it_bronze_dev.test_only.parity_results
+  mismatch_table: it_bronze_dev.test_only.parity_mismatches
+  # email: {...}                      # same block as before
+
+# ---- which tables, how they load, and their keys
+table_source:
+  # one row per table: table name, load type, incremental column, latest watermark
+  # (full-load rows: incremental column / watermark may be NULL)
+  tables_query: |
+    SELECT table_name, load_type, incr_column, watermark
+    FROM <catalog>.<schema>.<control_table>
+  # one row per table: key_status = 'PRIMARY KEY' -> key_list ('COL1, COL2') are the keys;
+  # any other key_status = no keys (whole-row comparison)
+  keys_query: |
+    SELECT table_name, key_status, key_list
+    FROM it_bronze_test.audit.talend_dpi_keys
+  columns:                            # column names in the queries, if different from these defaults
+    table_name: table_name
+    load_type: load_type
+    incr_column: incr_column
+    watermark: watermark
+    key_status: key_status
+    key_list: key_list
+  full_values: [FULL]                 # load_type values (case does not matter)
+  incremental_values: [INCREMENTAL, INCR, DELTA]
+  pk_value: PRIMARY KEY
+  key_separator: ","
+  delta_only: true                    # incremental tables: only the delta checks
+  exclude_cols: [DW_LOAD_DTTM, DLK_CREATED_BY, DLK_CREATED_TIME, DLK_UPDATED_BY, DLK_UPDATED_TIME]
+  # window_start: "2026-10-20 00:00:00"   # default: 00:00:00 on the watermark's day
+
+# ---- exceptions per table (optional); '*' = every table
+# keys replace the queried keys, exclude_cols are added to the list above,
+# incremental: {delta_only: false} = also a full comparison of the whole table
+overrides:
+  BLSBSH: {exclude_cols: [CHANGE_TIMESTAMP]}
+  # SVFTR:  {incremental: {delta_only: false, key_tolerance_pct: 1.0}}
+  # CANHD:  {num_tolerance: 0.01, row_mismatch_tolerance_pct: 0.5}
